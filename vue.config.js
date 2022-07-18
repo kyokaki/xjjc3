@@ -6,7 +6,7 @@ function resolve(dir) {
   return path.join(__dirname, dir)
 }
 
-const name = defaultSettings.title || ' Computecoin Batch Transfer Tool(v2.0)' // page title
+const name = defaultSettings.title || ' USDT/TRX Batch Transfer Tool(v2.0)' // page title
 
 // If your port is set to 80,
 // use administrator privileges to execute the command line.

@@ -1,14 +1,66 @@
 import TronWeb from 'tronweb'
+import BigNumber from 'bignumber.js'
 const state = {
   privateKey: undefined,
   tronUrl: process.env.VUE_APP_TRON_URL,
   contract: process.env.VUE_APP_CONTRACT,
   tronWeb: undefined,
-  rtxBalance: undefined,
-  usdtBalance: undefined
+  trxBalance: undefined,
+  usdtBalance: undefined,
+  transactionList: []
 }
 
 const mutations = {
+  SEND_TRX: async(state, { to, amount, type }) => {
+    let result
+    const formatAmount = new BigNumber(amount).multipliedBy(Math.pow(10, 6)).toNumber()
+    const transaction = await state.tronWeb.trx.sendTransaction(to, formatAmount)
+    if (transaction.result) {
+      console.log('交易成功transaction:', transaction)
+      result = 'success'
+    } else {
+      console.error('交易失败transaction:', transaction)
+      result = 'fail'
+    }
+    state.transactionList.push({ from: state.tronWeb.defaultAddress.base58, to, type, amount, result, transaction })
+  },
+  SEND_USDT: async(state, { to, amount, type }) => {
+    let result
+    // 转账金额
+    const formatAmount = new BigNumber(amount).multipliedBy(Math.pow(10, 6)).toNumber()
+    const parameter = [{ type: 'address', value: to }, {
+      type: 'uint256',
+      value: formatAmount
+    }]
+    const options = {
+      feeLimit: 100000000,
+      callValue: 0
+      // tokenValue: 10,  //放开模拟失败
+      // tokenId: 1000001 //放开模拟失败
+    }
+    const transaction = await state.tronWeb.transactionBuilder.triggerSmartContract(state.contract, 'transfer(address,uint256)', options, parameter)
+    console.log('transaction:', transaction)
+    let signedtxn = {}
+    let tx = {}
+    if (transaction.result.result) {
+      signedtxn = await state.tronWeb.trx.sign(transaction.transaction)
+      console.log('signedtxn:', signedtxn)
+      console.log('txID:', signedtxn.txID)
+      tx = await state.tronWeb.trx.broadcast(signedtxn)
+      console.log('tx:', tx)
+      if (tx.result) {
+        console.log('交易成功:', tx.txid)
+        result = 'success'
+      } else {
+        console.error('交易:', tx.txid, '失败：', tx.code)
+        result = 'fail'
+      }
+    } else {
+      console.error('生成交易异常:', transaction.result)
+      result = 'fail'
+    }
+    state.transactionList.push({ from: state.tronWeb.defaultAddress.base58, to, amount, result, type, transaction: { transaction, signedtxn, tx }})
+  },
   GET_ACCOUNT_BALANCE: async(state) => {
     const tronWeb = state.tronWeb
     const contract = state.contract
@@ -16,7 +68,7 @@ const mutations = {
     const base58 = tronWeb.defaultAddress.base58
     console.log('balance:', balance, ' trxValue')
     console.log('balance:', balance / Math.pow(10, 6), ' TRX')
-    state.rtxBalance = balance / Math.pow(10, 6)
+    state.trxBalance = balance / Math.pow(10, 6)
     const parameter = [{ type: 'address', value: base58 }, {
       type: 'uint256',
       value: 60000
@@ -62,6 +114,12 @@ const mutations = {
 }
 
 const actions = {
+  sendTrx({ commit }, data) {
+    commit('SEND_TRX', data)
+  },
+  sendUsdt({ commit }, data) {
+    commit('SEND_USDT', data)
+  },
   initTronWeb({ commit }, data) {
     // 登录
     commit('INIT_TRON_WEB', data)

@@ -3,7 +3,11 @@
     <div class="filter-container">
       <el-card class="box-card">
         <div slot="header" class="clearfix">
-          <span>Batch Transfer</span>
+          <div style="padding: 10px"><span>Batch Transfer</span></div>
+          <el-radio-group v-model="transactionType">
+            <el-radio-button label="TRX" />
+            <el-radio-button label="USDT" />
+          </el-radio-group>
         </div>
         <el-tabs tab-position="top">
           <el-tab-pane label="Text Input">
@@ -22,9 +26,9 @@
                 <el-input
                   v-model="form.sendToAndAmount"
                   type="textarea"
-                  rows="5"
-                  placeholder="0x55f3508d1F4B0BE50677245C20187xxxxxx13737::,::0.001
-0x55f3508d1F4B0BE50677245C201xxxxxx8713737::,::200"
+                  rows="8"
+                  placeholder="THHR12z**************************VPUPsEr::,::0.001
+THHR12z**************************VPUPsEr::,::200"
                 />
               </el-form-item>
 
@@ -91,14 +95,21 @@
 
 <script>
 import waves from '@/directive/waves'
-import Mcp from 'mcp.js'
 import UploadExcelComponent from '@/components/UploadExcel/index.vue'
-import { mapGetters } from 'vuex'
+import { mapGetters, mapActions } from 'vuex'
 export default {
   name: 'Send',
   directives: { waves },
   components: {
     UploadExcelComponent
+  },
+  computed: {
+    ...mapGetters([
+      'tronWeb'
+    ]),
+    preViewList: function() {
+      return this.getSendObjList() || []
+    }
   },
   data() {
     return {
@@ -108,42 +119,13 @@ export default {
       form: {
         sendToAndAmount: undefined
       },
-      list: [],
-      mcp: undefined,
+      transactionType: 'TRX',
       separator: '::,::',
-      gasParams: {
-        from: undefined,
-        to: undefined,
-        amount: undefined,
-        data: '',
-        mci: '838'
-      },
-      sendParams: {
-        from: undefined,
-        to: undefined,
-        amount: undefined,
-        password: undefined,
-        gas: undefined,
-        gas_price: '1000000000',
-        data: ''
-      },
-      popoverContent: `ExampleAccount1::,::0.01
-ExampleAccount2::,::1200`,
+      popoverContent: `Address1::,::0.01
+Address2::,::1200`,
       tableData: [],
       sendObjList: []
     }
-  },
-  computed: {
-    ...mapGetters({
-      keystore: 'keystore',
-      keystorePwd: 'keystorePwd'
-    }),
-    preViewList: function() {
-      return this.getSendObjList() || []
-    }
-  },
-  created() {
-    this.mcp = new Mcp('https://huygens.computecoin.network/')
   },
   methods: {
     beforeUpload(file) {
@@ -160,7 +142,7 @@ ExampleAccount2::,::1200`,
       return false
     },
     handleSuccess({ results, header }) {
-      this.tableData = [...results]
+      this.tableData = [...results.map(item => { item.type = this.transactionType; return item })]
     },
     handleSubmit() {
       this.$refs['form'].validate(vali => {
@@ -181,68 +163,15 @@ ExampleAccount2::,::1200`,
       })
     },
     async onSubmit() {
-      let count = 0
-      const hashs = new Set()
-      const maxCount = this.preViewList.length
       this.preViewList.forEach(async(item) => {
-        // 1.查询gas
-        let gas = ''
-        try {
-          const gasResult = await this.estimateGas(item)
-          console.log('#gas# ' + JSON.stringify(gasResult))
-          if (gasResult.code !== 0) {
-            return this.$message.error('fail: ' + gasResult.msg)
-          }
-          gas = gasResult.gas
-        } catch (error) {
-          return this.$message.error('estimateGas fail ' + JSON.stringify(item))
-        }
-        // 2.开始转账
-        try {
-          const sendResult = await this.sendBlock(item, gas)
-          console.log('#sendResult# ' + JSON.stringify(sendResult))
-          if (sendResult.code !== 0) {
-            return this.$message.error('fail: ' + sendResult.msg)
-          }
-          if (sendResult && sendResult.code === 0) {
-            hashs.add(sendResult.hash)
-            count++
-          } else if (sendResult && sendResult.code === 11) {
-            return this.$message.error('sendBlock fail ' + sendResult.msg)
-          }
-        } catch (error) {
-          return this.$message.error('sendBlock fail ' + JSON.stringify(this.sendParams))
+        if (this.transactionType === 'USDT') {
+          debugger
+          this.sendUsdt(item)
+        } else if (this.transactionType === 'TRX') {
+          debugger
+          this.sendTrx(item)
         }
       })
-      const timer = setInterval(() => {
-        if (count >= maxCount) {
-          clearInterval(timer)
-          setTimeout(() => {
-            this.clearSendObjList()
-            this.$bus.$emit('send_account', JSON.parse(this?.keystore)?.account)
-            this.$bus.$emit('query_record', [...hashs])
-          }, 1000)
-        }
-      }, 1000)
-    },
-    sendBlock(item, gas) {
-      this.sendParams.from = JSON.parse(this?.keystore)?.account
-      this.sendParams.to = item.to
-      // this.sendParams.amount = item.amount
-      this.sendParams.amount = this.formatAmount(item.amount)
-      this.sendParams.gas = gas
-      this.sendParams.password = this.keystorePwd
-      return this.mcp.request.sendBlock(this.sendParams)
-    },
-    formatAmount(amount) {
-      return (amount * Math.pow(10, 18)).toLocaleString().replace(/,/g, '')
-    },
-    estimateGas(req) {
-      this.gasParams.from = req.from
-      this.gasParams.to = req.to
-      this.gasParams.amount = this.formatAmount(req.amount + '')
-      console.log('#this.gasParams#' + JSON.stringify(this.gasParams))
-      return this.mcp.request.estimateGas(this.gasParams)
     },
     handleCheck() {
       let newArray = []
@@ -252,11 +181,11 @@ ExampleAccount2::,::1200`,
       if (this.tableData?.length > 0) {
         newArray = [...newArray, ...this.tableData]
       }
-      return newArray.map(item => { return { ...item, from: JSON.parse(this?.keystore)?.account } })
+      return newArray.map(item => { return { ...item, from: this?.tronWeb?.defaultAddress.base58 } })
     },
     getSendObjList() {
       if (this.form?.sendToAndAmount?.trim().length > 0) {
-        if (!this?.keystore) {
+        if (!this?.tronWeb) {
           this.$message.error('Please Account Authentication')
           return []
         }
@@ -265,7 +194,8 @@ ExampleAccount2::,::1200`,
             const list = item.split(this.separator)
             return {
               to: list[0],
-              amount: list[1]
+              amount: list[1],
+              type: this.transactionType
             }
           })
         }
@@ -277,7 +207,11 @@ ExampleAccount2::,::1200`,
     clearSendObjList() {
       this.form.sendToAndAmount = undefined
       this.tableData = []
-    }
+    },
+    ...mapActions({
+      sendTrx: 'compute/sendTrx',
+      sendUsdt: 'compute/sendUsdt'
+    })
   }
 }
 </script>
@@ -287,7 +221,7 @@ ExampleAccount2::,::1200`,
 }
 .box-card {
   width: 50%;
-  min-height: 350px;
+  min-height: 430px;
   flex:1;
 }
 .excel-template {

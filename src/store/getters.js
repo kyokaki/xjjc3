@@ -8,6 +8,7 @@ const getters = {
   keystorePwd: state => state.compute.keystorePwd,
   tronWeb: state => state.compute.tronWeb,
   usdtBalance: state => state.compute.usdtBalance,
-  rtxBalance: state => state.compute.rtxBalance
+  trxBalance: state => state.compute.trxBalance,
+  transactionList: state => state.compute.transactionList
 }
 export default getters

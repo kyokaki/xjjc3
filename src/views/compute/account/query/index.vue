@@ -5,6 +5,7 @@
         <div slot="header" class="clearfix">
           <span>Transfer Record</span>
         </div>
+        <el-button v-show="transactionList.length >0" type="primary" @click="exportExcel">Export</el-button>
         <el-form ref="form" :inline="true" :model="listQuery" class="demo-form-inline">
           <el-form-item v-if="false" label="Account" size="mini" prop="account">
             <el-input
@@ -17,15 +18,11 @@
             />
           </el-form-item>
         </el-form>
-        <!-- <div style="margin-bottom:10px;font-size:16px">
-          <el-tag>Account Balance: </el-tag> <span>{{ accountBalance }}</span>
-        </div> -->
-
         <div>
           <el-table
             :key="tableKey"
             v-loading="listLoading"
-            :data="list"
+            :data="transactionList"
             border
             fit
             highlight-current-row
@@ -33,12 +30,37 @@
             size="mini"
             empty-text="No data"
           >
-            <!-- <el-table-column align="center" label="time">
-              <template slot-scope="{ row }">
-                <span>{{ row.mcTime }}</span>
-              </template>
-            </el-table-column> -->
+            <el-table-column type="expand">
+              <template slot-scope="props">
+                <el-form label-position="left" inline class="demo-table-expand">
+                  <el-form-item label="type">
+                    <span>{{ props.row.type }}</span>
+                  </el-form-item>
 
+                  <el-form-item label="from">
+                    <span>{{ props.row.from }}</span>
+                  </el-form-item>
+
+                  <el-form-item label="to">
+                    <span>{{ props.row.to }}</span>
+                  </el-form-item>
+
+                  <el-form-item label="amount">
+                    <span>{{ props.row.amount }}</span>
+                  </el-form-item>
+
+                  <el-form-item label="transaction">
+                    <span>{{ props.row.transaction }}</span>
+                  </el-form-item>
+                </el-form>
+              </template>
+            </el-table-column>
+
+            <el-table-column align="center" label="type" prop="type">
+              <template slot-scope="{ row }">
+                <span>{{ row.type }}</span>
+              </template>
+            </el-table-column>
             <el-table-column align="center" label="from" prop="from">
               <template slot-scope="{ row }">
                 <span>{{ row.from }}</span>
@@ -51,18 +73,17 @@
               </template>
             </el-table-column>
 
-            <el-table-column align="center" label="hash">
-              <template slot-scope="{ row }">
-                <span>{{ row.hash }}</span>
-              </template>
-            </el-table-column>
-
             <el-table-column align="center" label="amount">
               <template slot-scope="{ row }">
                 <span>{{ row.amount }}</span>
               </template>
             </el-table-column>
 
+            <el-table-column align="center" label="result">
+              <template slot-scope="{ row }">
+                <span>{{ row.result }}</span>
+              </template>
+            </el-table-column>
           </el-table>
         </div>
       </el-card>
@@ -73,8 +94,7 @@
 
 <script>
 import waves from '@/directive/waves'
-import Mcp from 'mcp.js'
-import moment from 'moment'
+import { mapGetters } from 'vuex'
 import { getCurrentTime } from '@/utils/date-time'
 import { export_json_to_excel } from '@/excel/export2Excel'
 
@@ -85,13 +105,15 @@ export default {
     return {
       confirmLoading: false,
       tableKey: 0,
-      list: [],
       listLoading: false,
       listQuery: {
         account: undefined
       },
-      accountBalance: null,
       tranferRecordExcelMapping: [
+        {
+          text: 'type',
+          value: 'type'
+        },
         {
           text: 'from',
           value: 'from'
@@ -101,20 +123,24 @@ export default {
           value: 'to'
         },
         {
-          text: 'hash',
-          value: 'hash'
-        },
-        {
           text: 'amount',
           value: 'amount'
+        },
+        {
+          text: 'result',
+          value: 'result'
+        },
+        {
+          text: 'transaction',
+          value: 'transaction'
         }
       ]
     }
   },
-  created() {
-    this.mcp = new Mcp('https://huygens.computecoin.network/')
-    this.$bus.$on('send_account', this.getAccount)
-    this.$bus.$on('query_record', this.queryRecord)
+  computed: {
+    ...mapGetters([
+      'transactionList'
+    ])
   },
   methods: {
     exportExcel() {
@@ -123,53 +149,16 @@ export default {
       const filterVal = this.tranferRecordExcelMapping.map(
         (item) => item.value
       )
-      const data = this.formatJson(filterVal, this.list)
+      const data = this.formatJson(filterVal, this.transactionList)
       export_json_to_excel(tHeader, data, excelName)
     },
     formatJson(filterVal, jsonData) {
-      return jsonData.map((v) => filterVal.map((j) => v[j]))
-    },
-    queryRecord(hashes) {
-      this.getBlocks(hashes)
-    },
-    async getBlocks(hashes) {
-      const { blocks } = await this.mcp.request.getBlocks(hashes)
-      if (blocks?.length > 0) {
-        blocks.forEach(async block => {
-          const stateResult = await this.mcp.request.getBlockState(block.hash)
-          const mc_timestamp = stateResult?.block_state?.stable_content?.mc_timestamp
-          let time = ''
-          if (mc_timestamp) {
-            time = mc_timestamp ? moment.unix(mc_timestamp).utc().format() : ''
-          }
-          this.list.push({
-            from: block.from,
-            to: block?.content?.to,
-            hash: block.hash,
-            amount: this.formatAmount(block?.content?.amount),
-            time
-          })
-          if (blocks?.length === this.list.length) {
-            this.exportExcel()
-          }
-        })
-      }
-    },
-    formatAmount(amount) {
-      if (!amount) { return '' }
-      return typeof amount === 'number' ? amount / Math.pow(10, 18) : parseInt(amount) / Math.pow(10, 18)
-    },
-    async getAccountBalance() {
-      const { balance } = await this.mcp.request.accountBalance(this.listQuery.account)
-      if (balance) {
-        this.accountBalance = balance
-      }
-    },
-    getAccount(account) {
-      this.listQuery.account = account
-    },
-    filterHandler(value, row, column) {
-      return row['direction'] === value
+      return jsonData.map((v) => filterVal.map((j) => {
+        if (j !== 'transaction') {
+          return v[j]
+        }
+        return JSON.stringify(v[j])
+      }))
     }
   }
 }
@@ -178,4 +167,16 @@ export default {
 .app-container {
   padding: 10px;
 }
+.demo-table-expand {
+    font-size: 0;
+  }
+  .demo-table-expand label {
+    width: 90px;
+    color: #99a9bf;
+  }
+  .demo-table-expand .el-form-item {
+    margin-right: 0;
+    margin-bottom: 0;
+    width: 50%;
+  }
 </style>

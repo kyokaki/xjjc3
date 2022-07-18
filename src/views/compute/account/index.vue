@@ -1,6 +1,6 @@
 <template>
   <div style="padding:30px;">
-    <el-alert :closable="false" title="转账记录查询">
+    <el-alert :closable="false" title="Transfer Record Query">
       <router-view />
     </el-alert>
   </div>
